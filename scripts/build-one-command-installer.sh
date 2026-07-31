@@ -122,12 +122,19 @@ else
   printf '[PASS] Release установлен в %s.\n' "$INSTALL_ROOT"
 fi
 
+set -- "$INSTALL_ROOT/scripts/install.sh" --non-interactive
+if [ -n "${N8N_IMAGE_SOURCE:-}" ]; then
+  set -- "$@" --yes
+fi
+
 if [ "$(id -u)" -eq 0 ]; then
   env TIMEZONE="${TIMEZONE:-Europe/Moscow}" \
-    "$INSTALL_ROOT/scripts/install.sh" --non-interactive
+    N8N_IMAGE_SOURCE="${N8N_IMAGE_SOURCE:-}" \
+    "$@"
 else
   sudo env TIMEZONE="${TIMEZONE:-Europe/Moscow}" \
-    "$INSTALL_ROOT/scripts/install.sh" --non-interactive
+    N8N_IMAGE_SOURCE="${N8N_IMAGE_SOURCE:-}" \
+    "$@"
 fi
 EOF
 

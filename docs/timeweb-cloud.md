@@ -8,12 +8,27 @@
 
 ## 1. Подготовьте SSH key
 
-На своём компьютере создайте отдельную пару, если её ещё нет:
+На macOS или Linux создайте отдельную пару в Terminal, если её ещё нет:
 
 ```bash
 test -f "$HOME/.ssh/id_ed25519_n8n" || \
   ssh-keygen -t ed25519 -a 64 -f "$HOME/.ssh/id_ed25519_n8n"
 ```
+
+На Windows 10/11 откройте PowerShell:
+
+```powershell
+Get-Command ssh, ssh-keygen -ErrorAction Stop | Out-Null
+$VpsKey = Join-Path $HOME ".ssh\id_ed25519_n8n"
+New-Item -ItemType Directory -Force (Split-Path $VpsKey) | Out-Null
+if (-not (Test-Path $VpsKey)) {
+    ssh-keygen -t ed25519 -a 64 -f $VpsKey
+}
+Get-Content "$VpsKey.pub"
+```
+
+Если OpenSSH Client не найден, установите его через Windows «Дополнительные
+компоненты» по [инструкции Microsoft](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse).
 
 Приватный файл остаётся только у вас. В панель загружается содержимое `.pub`. Timeweb описывает добавление key при создании сервера в официальном [руководстве по SSH-ключам](https://timeweb.cloud/docs/cloud-servers/manage-servers/ssh-keys).
 
@@ -38,11 +53,21 @@ test -f "$HOME/.ssh/id_ed25519_n8n" || \
 
 ## 3. Проверьте SSH до firewall
 
-Скопируйте IPv4 из dashboard и подключитесь:
+Скопируйте IPv4 из dashboard. Команда сама попросит адрес и не содержит
+чужого примера. Для macOS или Linux:
 
 ```bash
-export VPS_IP="203.0.113.10"
+export VPS_KEY="$HOME/.ssh/id_ed25519_n8n"
+printf 'IPv4 вашего VPS: '
+read -r VPS_IP
 ssh -i "$HOME/.ssh/id_ed25519_n8n" "root@$VPS_IP"
+```
+
+Для Windows PowerShell:
+
+```powershell
+$VpsIp = Read-Host "IPv4 вашего VPS"
+ssh -i $VpsKey "root@$VpsIp"
 ```
 
 При первом соединении не подтверждайте fingerprint вслепую: сравните его с console/provider data, если они доступны. Официальный формат подключения приведён в [Timeweb SSH guide](https://timeweb.cloud/docs/unix-guides/ssh).

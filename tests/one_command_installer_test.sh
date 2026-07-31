@@ -25,6 +25,10 @@ grep -Eq "ARCHIVE_SHA256='[a-f0-9]{64}'" "$artifact" \
   || fail 'artifact does not embed archive checksum'
 grep -q 'installed_commit.*RELEASE_COMMIT' "$artifact" \
   || fail 'artifact does not guard reruns across different releases'
+grep -q 'N8N_IMAGE_SOURCE=.*N8N_IMAGE_SOURCE' "$artifact" \
+  || fail 'artifact does not propagate explicit image source'
+grep -q 'set -- "$@" --yes' "$artifact" \
+  || fail 'explicit image source does not authorize safe env migration'
 if grep -Eq '(latest|releases/latest)' "$artifact"; then
   fail 'artifact contains floating latest reference'
 fi

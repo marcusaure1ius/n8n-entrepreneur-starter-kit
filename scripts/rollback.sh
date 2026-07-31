@@ -47,7 +47,7 @@ write_state() {
 }
 
 main() {
-  local status current previous archive env_current answer output safety safety_dir doctor_code
+  local status current previous archive env_current n8n_repository answer output safety safety_dir doctor_code
   parse_args "$@"
   [[ -f "$ENV_FILE" ]] || fatal "Env-файл отсутствует: $ENV_FILE"
   [[ -f "$STATE_FILE" ]] || fatal "Lifecycle metadata отсутствует: $STATE_FILE"
@@ -60,7 +60,10 @@ main() {
   env_current="$(read_key N8N_VERSION "$ENV_FILE")"; env_current="${env_current:-2.29.10}"
   [[ "$env_current" == 2.29.10 ]] || fatal "Current env version не совпадает с metadata."
   [[ -f "$archive" && -f "$archive.sha256" ]] || fatal "Pre-update backup или checksum отсутствует."
-  docker image inspect docker.n8n.io/n8nio/n8n:2.29.9 >/dev/null 2>&1 || fatal "Rollback image 2.29.9 отсутствует локально; не запускайте unsafe downgrade."
+  n8n_repository="$(read_key N8N_IMAGE_REPOSITORY "$ENV_FILE")"; n8n_repository="${n8n_repository:-docker.n8n.io/n8nio/n8n}"
+  [[ "$n8n_repository" == docker.n8n.io/n8nio/n8n || "$n8n_repository" == dockerhub.timeweb.cloud/n8nio/n8n ]] \
+    || fatal "N8N image repository не входит в approved source set."
+  docker image inspect "$n8n_repository:2.29.9" >/dev/null 2>&1 || fatal "Rollback image 2.29.9 отсутствует локально; не запускайте unsafe downgrade."
   if (( ! ASSUME_YES )); then
     printf 'Восстановить полный pre-update backup и n8n 2.29.9? [y/N]: '
     IFS= read -r answer || fatal "Подтверждение не получено."

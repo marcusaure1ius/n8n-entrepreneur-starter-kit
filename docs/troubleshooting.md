@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Проверено: 2026-07-14. Руководство соответствует текущим scripts и pinned Compose baseline. Начинайте с read-only диагностики и останавливайтесь при первом `FAIL`; не удаляйте volumes, не меняйте `N8N_ENCRYPTION_KEY` и не делайте image-only downgrade ради «быстрого исправления».
+Проверено: 2026-07-14; recovery Docker Hub `429` обновлён по novice trial 2026-07-31. Руководство соответствует текущим scripts и pinned Compose baseline. Начинайте с read-only диагностики и останавливайтесь при первом `FAIL`; не удаляйте volumes, не меняйте `N8N_ENCRYPTION_KEY` и не делайте image-only downgrade ради «быстрого исправления».
 
 ```bash
 ./scripts/doctor.sh --local-only
@@ -8,6 +8,30 @@
 ```
 
 Doctor возвращает `0` при одних `OK`, `1` при `WARN`, `2` при `FAIL`. Перед передачей ручных logs удалите PII, tokens, webhook URLs и query parameters.
+
+## Docker Hub вернул `429 Too Many Requests`
+
+**Симптом:** installer завершился на `docker compose pull`, а output содержит
+`429 Too Many Requests` и `[FAIL] Не удалось скачать pinned images`.
+
+**Проверка:** убедитесь, что VPS действительно находится в Timeweb. Не меняйте
+image tags и не удаляйте созданный `.env` или volumes.
+
+**Решение:** на Timeweb повторите опубликованную команду с явным source:
+
+```bash
+curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | N8N_IMAGE_SOURCE=timeweb sh
+```
+
+Installer использует [официальный proxy Timeweb](https://dockerhub.timeweb.cloud/),
+но сохраняет exact версии PostgreSQL, n8n и Caddy. Выбор записывается в `.env`;
+secrets и данные повторно не создаются. Pull имеет максимум три попытки. Если
+они исчерпаны, остановитесь: не включайте `latest`, произвольный mirror или
+бесконечный retry.
+
+Для другого cloud provider используйте его официальный registry recovery или
+дождитесь снятия лимита Docker Hub; Timeweb proxy не включается автоматически
+по IP и не является общим default.
 
 ## n8n не открывается
 

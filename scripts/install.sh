@@ -47,8 +47,13 @@ POSTGRES_PASSWORD_VALUE=""
 N8N_ENCRYPTION_KEY_VALUE=""
 EXECUTIONS_DATA_MAX_AGE_VALUE="168"
 EXECUTIONS_DATA_PRUNE_MAX_COUNT_VALUE="10000"
+IMAGE_SOURCE_VALUE="official"
+POSTGRES_IMAGE_VALUE="postgres:17.10-bookworm"
+N8N_IMAGE_REPOSITORY_VALUE="docker.n8n.io/n8nio/n8n"
+CADDY_IMAGE_VALUE="caddy:2.11.4-alpine"
 
 declare -a DOCKER_CMD=(docker)
+declare -a PULL_RETRY_DELAYS=(5 15)
 
 usage() {
   cat <<'EOF'
@@ -77,7 +82,8 @@ usage() {
 Переменные конфигурации:
   N8N_HOST, ACME_EMAIL, TIMEZONE, POSTGRES_DB, POSTGRES_USER,
   POSTGRES_PASSWORD, N8N_ENCRYPTION_KEY, EXECUTIONS_DATA_MAX_AGE,
-  EXECUTIONS_DATA_PRUNE_MAX_COUNT.
+  EXECUTIONS_DATA_PRUNE_MAX_COUNT. Для VPS Timeweb допустим
+  N8N_IMAGE_SOURCE=timeweb; exact image tags сохраняются.
 
 Пример non-interactive dry-run:
   ./scripts/install.sh --non-interactive --dry-run
@@ -195,8 +201,33 @@ assign_config_value() {
     N8N_ENCRYPTION_KEY) N8N_ENCRYPTION_KEY_VALUE="$value" ;;
     EXECUTIONS_DATA_MAX_AGE) EXECUTIONS_DATA_MAX_AGE_VALUE="$value" ;;
     EXECUTIONS_DATA_PRUNE_MAX_COUNT) EXECUTIONS_DATA_PRUNE_MAX_COUNT_VALUE="$value" ;;
+    N8N_IMAGE_SOURCE) set_image_source "$value" ;;
+    POSTGRES_IMAGE) POSTGRES_IMAGE_VALUE="$value" ;;
+    N8N_IMAGE_REPOSITORY) N8N_IMAGE_REPOSITORY_VALUE="$value" ;;
+    CADDY_IMAGE) CADDY_IMAGE_VALUE="$value" ;;
     '') ;;
     *) fatal "$EXIT_USAGE" "Недопустимый ключ конфигурации: $key" ;;
+  esac
+}
+
+set_image_source() {
+  local source="$1"
+  case "$source" in
+    official)
+      IMAGE_SOURCE_VALUE="official"
+      POSTGRES_IMAGE_VALUE="postgres:17.10-bookworm"
+      N8N_IMAGE_REPOSITORY_VALUE="docker.n8n.io/n8nio/n8n"
+      CADDY_IMAGE_VALUE="caddy:2.11.4-alpine"
+      ;;
+    timeweb)
+      IMAGE_SOURCE_VALUE="timeweb"
+      POSTGRES_IMAGE_VALUE="dockerhub.timeweb.cloud/library/postgres:17.10-bookworm"
+      N8N_IMAGE_REPOSITORY_VALUE="dockerhub.timeweb.cloud/n8nio/n8n"
+      CADDY_IMAGE_VALUE="dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine"
+      ;;
+    *)
+      fatal "$EXIT_USAGE" "N8N_IMAGE_SOURCE должен быть official или timeweb."
+      ;;
   esac
 }
 
@@ -231,6 +262,7 @@ apply_process_environment() {
   [[ -n "${N8N_ENCRYPTION_KEY:-}" ]] && N8N_ENCRYPTION_KEY_VALUE="$N8N_ENCRYPTION_KEY"
   [[ -n "${EXECUTIONS_DATA_MAX_AGE:-}" ]] && EXECUTIONS_DATA_MAX_AGE_VALUE="$EXECUTIONS_DATA_MAX_AGE"
   [[ -n "${EXECUTIONS_DATA_PRUNE_MAX_COUNT:-}" ]] && EXECUTIONS_DATA_PRUNE_MAX_COUNT_VALUE="$EXECUTIONS_DATA_PRUNE_MAX_COUNT"
+  [[ -n "${N8N_IMAGE_SOURCE:-}" ]] && set_image_source "$N8N_IMAGE_SOURCE"
   return 0
 }
 
@@ -346,6 +378,21 @@ validate_configuration() {
     || fatal "$EXIT_USAGE" "N8N_ENCRYPTION_KEY должен содержать минимум 24 безопасных dotenv-символа."
   [[ "$EXECUTIONS_DATA_MAX_AGE_VALUE" =~ ^[0-9]+$ ]] || fatal "$EXIT_USAGE" "EXECUTIONS_DATA_MAX_AGE должен быть целым числом."
   [[ "$EXECUTIONS_DATA_PRUNE_MAX_COUNT_VALUE" =~ ^[0-9]+$ ]] || fatal "$EXIT_USAGE" "EXECUTIONS_DATA_PRUNE_MAX_COUNT должен быть целым числом."
+  case "$IMAGE_SOURCE_VALUE" in
+    official)
+      [[ "$POSTGRES_IMAGE_VALUE" == "postgres:17.10-bookworm" \
+        && "$N8N_IMAGE_REPOSITORY_VALUE" == "docker.n8n.io/n8nio/n8n" \
+        && "$CADDY_IMAGE_VALUE" == "caddy:2.11.4-alpine" ]] \
+        || fatal "$EXIT_USAGE" "Official image source не совпадает с закреплёнными image references."
+      ;;
+    timeweb)
+      [[ "$POSTGRES_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/postgres:17.10-bookworm" \
+        && "$N8N_IMAGE_REPOSITORY_VALUE" == "dockerhub.timeweb.cloud/n8nio/n8n" \
+        && "$CADDY_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine" ]] \
+        || fatal "$EXIT_USAGE" "Timeweb image source не совпадает с закреплёнными proxy references."
+      ;;
+    *) fatal "$EXIT_USAGE" "Неизвестный image source: $IMAGE_SOURCE_VALUE" ;;
+  esac
   pass "Конфигурация имеет допустимый формат."
 }
 
@@ -456,7 +503,7 @@ check_dns() {
 }
 
 check_network() {
-  local registry_status
+  local registry_status registry_url registry_label
   if ! command -v curl >/dev/null 2>&1; then
     if (( DRY_RUN || CHECK_ONLY )); then
       warn "curl отсутствует; исходящая сеть будет проверена после установки зависимости."
@@ -466,10 +513,17 @@ check_network() {
   fi
   curl --fail --silent --show-error --location --max-time 15 --output /dev/null https://download.docker.com/ \
     || fatal "$EXIT_NETWORK" "Нет HTTPS-доступа к download.docker.com."
-  registry_status="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' https://docker.n8n.io/v2/ 2>/dev/null || true)"
+  if [[ "$IMAGE_SOURCE_VALUE" == timeweb ]]; then
+    registry_url="https://dockerhub.timeweb.cloud/v2/"
+    registry_label="Timeweb Docker Hub proxy"
+  else
+    registry_url="https://docker.n8n.io/v2/"
+    registry_label="registry n8n"
+  fi
+  registry_status="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$registry_url" 2>/dev/null || true)"
   [[ "$registry_status" == "200" || "$registry_status" == "401" ]] \
-    || fatal "$EXIT_NETWORK" "Нет HTTPS-доступа к registry n8n (HTTP ${registry_status:-none})."
-  pass "Исходящий HTTPS к Docker и n8n registry доступен."
+    || fatal "$EXIT_NETWORK" "Нет HTTPS-доступа к $registry_label (HTTP ${registry_status:-none})."
+  pass "Исходящий HTTPS к Docker и $registry_label доступен."
 }
 
 ensure_base_packages() {
@@ -621,6 +675,10 @@ POSTGRES_PASSWORD=$POSTGRES_PASSWORD_VALUE
 N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY_VALUE
 EXECUTIONS_DATA_MAX_AGE=$EXECUTIONS_DATA_MAX_AGE_VALUE
 EXECUTIONS_DATA_PRUNE_MAX_COUNT=$EXECUTIONS_DATA_PRUNE_MAX_COUNT_VALUE
+N8N_IMAGE_SOURCE=$IMAGE_SOURCE_VALUE
+POSTGRES_IMAGE=$POSTGRES_IMAGE_VALUE
+N8N_IMAGE_REPOSITORY=$N8N_IMAGE_REPOSITORY_VALUE
+CADDY_IMAGE=$CADDY_IMAGE_VALUE
 EOF
 }
 
@@ -663,9 +721,33 @@ validate_compose() {
     info "Будет выполнен docker compose config --quiet без печати resolved secrets."
     return
   fi
-  "${DOCKER_CMD[@]}" compose --project-directory "$PROJECT_ROOT" --env-file "$ENV_FILE" config --quiet \
+  compose_project config --quiet \
     || fatal "$EXIT_COMPOSE" "Compose-конфигурация невалидна."
   pass "Compose-конфигурация валидна."
+}
+
+compose_project() {
+  "${DOCKER_CMD[@]}" compose --project-directory "$PROJECT_ROOT" --env-file "$ENV_FILE" "$@"
+}
+
+pull_pinned_images() {
+  local attempt=1
+  local max_attempts=$(( ${#PULL_RETRY_DELAYS[@]} + 1 ))
+  local delay
+
+  while (( attempt <= max_attempts )); do
+    info "Скачивание pinned images: попытка $attempt из $max_attempts; source=$IMAGE_SOURCE_VALUE."
+    if compose_project pull; then
+      pass "Pinned images скачаны."
+      return 0
+    fi
+    (( attempt < max_attempts )) || return 1
+    delay="${PULL_RETRY_DELAYS[$((attempt - 1))]}"
+    warn "Скачивание не удалось; повтор через ${delay} секунд. Exact tags не изменяются."
+    (( delay == 0 )) || sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 run_post_install_doctor() {
@@ -682,7 +764,7 @@ run_post_install_doctor() {
 assert_running_services() {
   local running_ids
 
-  running_ids="$("${DOCKER_CMD[@]}" compose --project-directory "$PROJECT_ROOT" --env-file "$ENV_FILE" ps --status running -q)" \
+  running_ids="$(compose_project ps --status running -q)" \
     || fatal "$EXIT_HEALTH" "Не удалось получить список работающих сервисов."
   [[ -n "$running_ids" ]] || fatal "$EXIT_HEALTH" "После запуска нет работающих сервисов."
 }
@@ -692,9 +774,9 @@ start_stack() {
     info "Будут выполнены pinned image pull и docker compose up -d --wait; volumes не удаляются."
     return
   fi
-  "${DOCKER_CMD[@]}" compose --project-directory "$PROJECT_ROOT" --env-file "$ENV_FILE" pull \
-    || fatal "$EXIT_START" "Не удалось скачать pinned images."
-  "${DOCKER_CMD[@]}" compose --project-directory "$PROJECT_ROOT" --env-file "$ENV_FILE" up -d --wait --wait-timeout 300 \
+  pull_pinned_images \
+    || fatal "$EXIT_START" "Не удалось скачать pinned images после ограниченных повторов. Для Timeweb используйте N8N_IMAGE_SOURCE=timeweb по Quick Start."
+  compose_project up -d --wait --wait-timeout 300 \
     || fatal "$EXIT_HEALTH" "Сервисы не достигли healthy за 300 секунд. Запустите docker compose ps и logs."
   assert_running_services
   run_post_install_doctor
@@ -744,6 +826,7 @@ main() {
   local env_encryption_key="${N8N_ENCRYPTION_KEY:-}"
   local env_max_age="${EXECUTIONS_DATA_MAX_AGE:-}"
   local env_max_count="${EXECUTIONS_DATA_PRUNE_MAX_COUNT:-}"
+  local env_image_source="${N8N_IMAGE_SOURCE:-}"
 
   trap 'on_error $? $LINENO' ERR
   parse_args "$@"
@@ -758,6 +841,7 @@ main() {
     POSTGRES_DB="$env_postgres_db" POSTGRES_USER="$env_postgres_user" \
     POSTGRES_PASSWORD="$env_postgres_password" N8N_ENCRYPTION_KEY="$env_encryption_key" \
     EXECUTIONS_DATA_MAX_AGE="$env_max_age" EXECUTIONS_DATA_PRUNE_MAX_COUNT="$env_max_count" \
+    N8N_IMAGE_SOURCE="$env_image_source" \
     apply_process_environment
 
   collect_configuration

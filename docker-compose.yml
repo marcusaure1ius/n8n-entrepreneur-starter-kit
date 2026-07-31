@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   postgres:
-    image: postgres:17.10-bookworm
+    image: ${POSTGRES_IMAGE:-postgres:17.10-bookworm}
     platform: linux/amd64
     restart: unless-stopped
     environment:
@@ -33,7 +33,7 @@ services:
     logging: *default-logging
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-2.29.10}
+    image: ${N8N_IMAGE_REPOSITORY:-docker.n8n.io/n8nio/n8n}:${N8N_VERSION:-2.29.10}
     platform: linux/amd64
     restart: unless-stopped
     init: true
@@ -99,7 +99,7 @@ services:
     logging: *default-logging
 
   caddy:
-    image: caddy:2.11.4-alpine
+    image: ${CADDY_IMAGE:-caddy:2.11.4-alpine}
     platform: linux/amd64
     restart: unless-stopped
     depends_on:

@@ -16,6 +16,10 @@ CADDY_WAS_RUNNING=0
 POSTGRES_DB_VALUE="n8n"
 POSTGRES_USER_VALUE="n8n"
 N8N_VERSION_VALUE="2.29.10"
+IMAGE_SOURCE_VALUE="official"
+N8N_IMAGE_REPOSITORY_VALUE="docker.n8n.io/n8nio/n8n"
+POSTGRES_IMAGE_VALUE="postgres:17.10-bookworm"
+CADDY_IMAGE_VALUE="caddy:2.11.4-alpine"
 declare -a DOCKER_CMD=(docker)
 
 usage() {
@@ -96,7 +100,7 @@ archive_volume() {
   "${DOCKER_CMD[@]}" volume inspect "$volume" >/dev/null 2>&1 || fatal "Volume отсутствует: $volume"
   "${DOCKER_CMD[@]}" run --rm --platform linux/amd64 \
     -v "$volume:/source:ro" -v "$destination:/backup" \
-    caddy:2.11.4-alpine tar -C /source -czf "/backup/$volume.tar.gz" . >/dev/null
+    "$CADDY_IMAGE_VALUE" tar -C /source -czf "/backup/$volume.tar.gz" . >/dev/null
 }
 
 apply_retention() {
@@ -122,6 +126,29 @@ main() {
   POSTGRES_USER_VALUE="$(read_env_key POSTGRES_USER "$ENV_FILE")"; POSTGRES_USER_VALUE="${POSTGRES_USER_VALUE:-n8n}"
   N8N_VERSION_VALUE="$(read_env_key N8N_VERSION "$ENV_FILE")"; N8N_VERSION_VALUE="${N8N_VERSION_VALUE:-2.29.10}"
   [[ "$N8N_VERSION_VALUE" == 2.29.9 || "$N8N_VERSION_VALUE" == 2.29.10 ]] || fatal "N8N_VERSION не входит в approved lifecycle pair."
+  IMAGE_SOURCE_VALUE="$(read_env_key N8N_IMAGE_SOURCE "$ENV_FILE")"; IMAGE_SOURCE_VALUE="${IMAGE_SOURCE_VALUE:-official}"
+  N8N_IMAGE_REPOSITORY_VALUE="$(read_env_key N8N_IMAGE_REPOSITORY "$ENV_FILE")"; N8N_IMAGE_REPOSITORY_VALUE="${N8N_IMAGE_REPOSITORY_VALUE:-docker.n8n.io/n8nio/n8n}"
+  POSTGRES_IMAGE_VALUE="$(read_env_key POSTGRES_IMAGE "$ENV_FILE")"; POSTGRES_IMAGE_VALUE="${POSTGRES_IMAGE_VALUE:-postgres:17.10-bookworm}"
+  CADDY_IMAGE_VALUE="$(read_env_key CADDY_IMAGE "$ENV_FILE")"; CADDY_IMAGE_VALUE="${CADDY_IMAGE_VALUE:-caddy:2.11.4-alpine}"
+  [[ "$N8N_IMAGE_REPOSITORY_VALUE" == "docker.n8n.io/n8nio/n8n" || "$N8N_IMAGE_REPOSITORY_VALUE" == "dockerhub.timeweb.cloud/n8nio/n8n" ]] \
+    || fatal "N8N image repository не входит в approved source set."
+  [[ "$POSTGRES_IMAGE_VALUE" == "postgres:17.10-bookworm" || "$POSTGRES_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/postgres:17.10-bookworm" ]] \
+    || fatal "PostgreSQL image не входит в approved source set."
+  [[ "$CADDY_IMAGE_VALUE" == "caddy:2.11.4-alpine" || "$CADDY_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine" ]] \
+    || fatal "Caddy image не входит в approved source set."
+  if [[ "$IMAGE_SOURCE_VALUE" == official ]]; then
+    [[ "$N8N_IMAGE_REPOSITORY_VALUE" == "docker.n8n.io/n8nio/n8n" \
+      && "$POSTGRES_IMAGE_VALUE" == "postgres:17.10-bookworm" \
+      && "$CADDY_IMAGE_VALUE" == "caddy:2.11.4-alpine" ]] \
+      || fatal "Official backup image set несогласован."
+  elif [[ "$IMAGE_SOURCE_VALUE" == timeweb ]]; then
+    [[ "$N8N_IMAGE_REPOSITORY_VALUE" == "dockerhub.timeweb.cloud/n8nio/n8n" \
+      && "$POSTGRES_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/postgres:17.10-bookworm" \
+      && "$CADDY_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine" ]] \
+      || fatal "Timeweb backup image set несогласован."
+  else
+    fatal "N8N_IMAGE_SOURCE не входит в approved source set."
+  fi
   configure_docker
   compose config --quiet >/dev/null 2>&1 || fatal "Compose config невалиден."
   [[ -n "$(compose ps --status running -q postgres 2>/dev/null)" ]] || fatal "PostgreSQL должен быть running."
@@ -155,9 +182,10 @@ main() {
   "project": "alfa-ai-course",
   "createdAt": "$created_at",
   "consistency": "quiesced-n8n-logical-postgres",
-  "n8nImage": "docker.n8n.io/n8nio/n8n:$N8N_VERSION_VALUE",
-  "postgresImage": "postgres:17.10-bookworm",
-  "caddyImage": "caddy:2.11.4-alpine"
+  "imageSource": "$IMAGE_SOURCE_VALUE",
+  "n8nImage": "$N8N_IMAGE_REPOSITORY_VALUE:$N8N_VERSION_VALUE",
+  "postgresImage": "$POSTGRES_IMAGE_VALUE",
+  "caddyImage": "$CADDY_IMAGE_VALUE"
 }
 EOF
   (cd "$TEMP_DIR" && find payload -type f -print | sort | xargs sha256sum && sha256sum manifest.json) > "$TEMP_DIR/checksums.sha256"

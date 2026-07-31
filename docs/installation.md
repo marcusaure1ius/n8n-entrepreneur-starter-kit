@@ -18,8 +18,17 @@
 
 ## Основной запуск
 
+Для VPS у любого провайдера, кроме Timeweb:
+
 ```bash
 curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | sh
+```
+
+Для Timeweb VPS используйте их официальный Docker Hub proxy в той же
+one-command форме:
+
+```bash
+curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | N8N_IMAGE_SOURCE=timeweb sh
 ```
 
 Stable URL перенаправляет на asset последнего GitHub Release. Каждый release сохраняет immutable versioned URL, checksum самого `install.sh` и exact Git commit; embedded archive дополнительно проверяется до любых системных изменений.
@@ -75,6 +84,11 @@ Installer разбирает только разрешённые строки `K
 | `N8N_ENCRYPTION_KEY` | нет | генерируется один раз и должен сохраняться всегда; custom value — минимум 24 безопасных dotenv-символа |
 | `EXECUTIONS_DATA_MAX_AGE` | нет | retention в часах, default `168` |
 | `EXECUTIONS_DATA_PRUNE_MAX_COUNT` | нет | верхняя граница executions, default `10000` |
+| `N8N_IMAGE_SOURCE` | нет | `official` по умолчанию; `timeweb` явно выбирает allowlisted Timeweb proxy с теми же exact tags |
+
+`POSTGRES_IMAGE`, `N8N_IMAGE_REPOSITORY` и `CADDY_IMAGE` записываются installer в `.env`
+из выбранного allowlisted source. Произвольные image references в beginner
+path отклоняются.
 
 Секреты не печатаются. Не передавайте их в shared shell history и CI logs.
 
@@ -97,6 +111,7 @@ Installer разбирает только разрешённые строки `K
 | Public hostname | auto sslip.io разрешается точно в public IPv4 | custom FQDN отличается при возможном NAT/proxy | auto hostname отсутствует/не совпадает или неверный формат |
 | Network | Docker repository и n8n registry доступны | проверка отложена, если в read-only режиме нет curl | endpoint недоступен при установке |
 | Docker | daemon и Compose доступны | existing versions отличаются от baseline | daemon/Compose недоступны или pinned packages отсутствуют |
+| Image pull | exact images скачаны не более чем за три попытки | transient failure вызвал bounded backoff | попытки исчерпаны; для Timeweb выбрать `N8N_IMAGE_SOURCE=timeweb` |
 
 DNS mismatch — предупреждение из-за возможного NAT, reverse proxy или propagation. Public HTTPS и certificate проверит `doctor.sh`; container health сам по себе их не доказывает.
 
