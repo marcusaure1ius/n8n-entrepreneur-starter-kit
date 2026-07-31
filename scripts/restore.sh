@@ -11,6 +11,7 @@ ARCHIVE=""
 ASSUME_YES=0
 ROLLBACK_MODE=0
 TEMP_DIR=""
+RESTORE_HELPER_IMAGE="caddy:2.11.4-alpine"
 MUTATION_STARTED=0
 SAFETY_ARCHIVE=""
 EXISTING_STATE=0
@@ -91,8 +92,17 @@ verify_archive() {
   postgres_image="$(sed -n 's/.*"postgresImage": "\([^"]*\)".*/\1/p' "$TEMP_DIR/manifest.json")"
   caddy_image="$(sed -n 's/.*"caddyImage": "\([^"]*\)".*/\1/p' "$TEMP_DIR/manifest.json")"
   [[ "$schema" == 1 && "$project" == alfa-ai-course ]] || fatal "Unsupported backup schema/project."
-  [[ ( "$n8n_image" == docker.n8n.io/n8nio/n8n:2.29.9 || "$n8n_image" == docker.n8n.io/n8nio/n8n:2.29.10 ) && "$postgres_image" == postgres:17.10-bookworm && "$caddy_image" == caddy:2.11.4-alpine ]] \
-    || fatal "Backup image compatibility mismatch."
+  if [[ ( "$n8n_image" == docker.n8n.io/n8nio/n8n:2.29.9 || "$n8n_image" == docker.n8n.io/n8nio/n8n:2.29.10 ) \
+    && "$postgres_image" == postgres:17.10-bookworm \
+    && "$caddy_image" == caddy:2.11.4-alpine ]]; then
+    RESTORE_HELPER_IMAGE="$caddy_image"
+  elif [[ ( "$n8n_image" == dockerhub.timeweb.cloud/n8nio/n8n:2.29.9 || "$n8n_image" == dockerhub.timeweb.cloud/n8nio/n8n:2.29.10 ) \
+    && "$postgres_image" == dockerhub.timeweb.cloud/library/postgres:17.10-bookworm \
+    && "$caddy_image" == dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine ]]; then
+    RESTORE_HELPER_IMAGE="$caddy_image"
+  else
+    fatal "Backup image compatibility mismatch."
+  fi
   for entry in n8n_data.tar.gz n8n_caddy_data.tar.gz n8n_caddy_config.tar.gz; do
     while IFS= read -r type; do
       [[ "$type" == - || "$type" == d ]] || fatal "$entry содержит symlink или special entry."
@@ -108,7 +118,7 @@ restore_volume() {
   local volume="$1" archive_name="$2"
   "${DOCKER_CMD[@]}" volume create "$volume" >/dev/null
   "${DOCKER_CMD[@]}" run --rm --platform linux/amd64 \
-    -v "$volume:/target" -v "$TEMP_DIR/payload:/backup:ro" caddy:2.11.4-alpine \
+    -v "$volume:/target" -v "$TEMP_DIR/payload:/backup:ro" "$RESTORE_HELPER_IMAGE" \
     sh -eu -c "rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true; tar -C /target -xzf /backup/$archive_name" >/dev/null
 }
 

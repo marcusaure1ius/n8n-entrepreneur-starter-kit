@@ -1,70 +1,169 @@
-# Quick Start: n8n одной командой
+# Quick Start: от чистого VPS до n8n
 
-Проверено: 2026-07-14. Собственный домен, ручная DNS-запись, локальный Git checkout и передача archive участнику для базового пути не нужны.
+Первичная техническая проверка: 2026-07-14. Инструкция переработана по
+результатам novice trial 2026-07-31. Собственный домен, Git и передача файлов
+на VPS для базового пути не нужны.
 
-## Что должно быть готово
+## Результат
 
-| Обязательное | Рабочая рекомендация | Только минимальный тест |
-|---|---|---|
-| ОС | Ubuntu 24.04 LTS x86_64 | та же ОС и architecture |
-| CPU / RAM | 2 vCPU / 2 GiB | 1 vCPU / 1 GiB |
-| Диск | 20 GiB свободно | 10 GiB свободно |
-| Сеть | закреплённый публичный IPv4, TCP 22/80/443 | публичный IPv4, TCP 22/80/443 |
-| Доступ | SSH key и пользователь с `sudo` | root или пользователь с `sudo` |
+Вы создадите SSH-доступ, войдёте на Ubuntu VPS, запустите одну install-команду
+и откроете n8n по обычному HTTPS-адресу.
 
-1 GiB и 10 GiB — нижняя граница для короткого теста, а не рекомендация для постоянной работы. Если VPS ещё нет, используйте [Timeweb Cloud](timeweb-cloud.md), [пошаговый Timeweb guide](timeweb-clean-install.md) или [Yandex Cloud](yandex-cloud.md).
+## Перед началом
 
-## 1. Войдите на VPS
+Подготовьте:
+
+1. компьютер с **macOS/Linux Terminal** или **Windows 10/11 PowerShell**;
+2. чистый VPS с **Ubuntu 24.04 LTS x86_64**;
+3. публичный IPv4 VPS и доступ к панели провайдера;
+4. открытые входящие TCP-порты `22`, `80` и `443`.
+
+Рабочая конфигурация VPS: `2 vCPU`, `2 GiB RAM`, от `20 GiB` свободного
+диска. `1 vCPU`, `1 GiB` и `10 GiB` — только нижняя граница короткого теста,
+не рекомендация для постоянной работы.
+
+Если VPS ещё нет, используйте [пошаговую инструкцию Timeweb](timeweb-clean-install.md),
+[краткий Timeweb guide](timeweb-cloud.md) или [Yandex Cloud](yandex-cloud.md).
+
+## Шаг 1. Создайте SSH-ключ на своём компьютере
+
+Выберите только блок для своей локальной ОС. Во время `ssh-keygen` терминал
+предложит passphrase. Придумайте её самостоятельно и сохраните в менеджере
+паролей.
+
+### macOS или Linux — Terminal
+
+Скопируйте весь блок, вставьте в Terminal и нажмите Enter:
 
 ```bash
-ssh root@203.0.113.10
+export VPS_KEY="$HOME/.ssh/id_ed25519_n8n"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+test -f "$VPS_KEY" || ssh-keygen -t ed25519 -a 64 -f "$VPS_KEY"
+cat "$VPS_KEY.pub"
 ```
 
-Замените пример на IPv4 из панели провайдера. При первом подключении сравните SSH fingerprint с данными панели, если провайдер их показывает.
+### Windows 10/11 — PowerShell
 
-## 2. Выполните одну команду
+Скопируйте весь блок, вставьте в PowerShell и нажмите Enter:
 
-Финальный пользовательский интерфейс установки:
+```powershell
+Get-Command ssh, ssh-keygen -ErrorAction Stop | Out-Null
+$VpsKey = Join-Path $HOME ".ssh\id_ed25519_n8n"
+New-Item -ItemType Directory -Force (Split-Path $VpsKey) | Out-Null
+if (-not (Test-Path $VpsKey)) {
+    ssh-keygen -t ed25519 -a 64 -f $VpsKey
+}
+Get-Content "$VpsKey.pub"
+```
+
+Если первая команда сообщает, что `ssh` или `ssh-keygen` не найдены,
+установите только **OpenSSH Client** через Windows «Дополнительные
+компоненты» по [инструкции Microsoft](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse).
+OpenSSH Server на вашем компьютере не нужен.
+
+**Ожидаемый результат:** последняя строка начинается с `ssh-ed25519`. Это
+публичный ключ. Файл без окончания `.pub` — приватный; не загружайте и не
+отправляйте его никому.
+
+## Шаг 2. Добавьте публичный ключ на VPS
+
+1. Скопируйте целиком строку `ssh-ed25519 ...`, напечатанную на шаге 1.
+2. При создании VPS вставьте её в **Authorization / SSH key**.
+3. Если Timeweb VPS уже создан: откройте карточку сервера → **Доступ** →
+   **SSH-ключи / Изменить** → **Загрузить новый ключ**.
+4. Вставьте публичный ключ, сохраните изменение и подождите пару минут.
+
+**Ожидаемый результат:** новый ключ отображается в панели и выбран для этого
+VPS. На Timeweb перезагрузка сервера не требуется.
+
+## Шаг 3. Войдите на VPS
+
+Скопируйте IPv4 из карточки сервера. Не вставляйте адрес внутрь блока кода:
+сначала выполните блок, а затем дождитесь приглашения `IPv4 вашего VPS:`.
+
+### macOS или Linux — Terminal
+
+```bash
+printf 'IPv4 вашего VPS: '
+read -r VPS_IP
+ssh -i "$VPS_KEY" "root@$VPS_IP"
+```
+
+Когда появится `IPv4 вашего VPS:`, вставьте только адрес из панели, например
+четыре группы цифр через точки, и нажмите Enter.
+
+### Windows — PowerShell
+
+```powershell
+$VpsIp = Read-Host "IPv4 вашего VPS"
+ssh -i $VpsKey "root@$VpsIp"
+```
+
+Когда PowerShell попросит IPv4, вставьте только адрес из панели и нажмите
+Enter.
+
+При первом подключении SSH покажет fingerprint. Сравните его с данными панели,
+если провайдер их показывает, затем напишите `yes`.
+
+**Ожидаемый результат:** строка терминала начинается с `root@...`. Все
+следующие команды выполняются уже на Ubuntu VPS и одинаковы для Windows,
+macOS и Linux.
+
+Если появилось `Permission denied (publickey)`, public key ещё не добавлен на
+этот VPS либо выбран другой private key. Вернитесь к шагу 2 и не переходите к
+установке.
+
+## Шаг 4. Установите n8n
+
+Выберите одну команду по провайдеру VPS.
+
+### VPS в Timeweb Cloud
+
+Команда использует [официальный proxy Timeweb](https://dockerhub.timeweb.cloud/),
+чтобы не зависеть от общего лимита Docker Hub, и сохраняет exact версии
+образов:
+
+```bash
+curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | N8N_IMAGE_SOURCE=timeweb sh
+```
+
+### Другой провайдер
 
 ```bash
 curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | sh
 ```
 
-Это стабильный URL GitHub Releases. Он ведёт на проверенный asset текущего release; versioned copy, checksum и exact commit остаются доступны для аудита. Никакие домен, email, `git clone`, `scp`, environment variables или ответы installer участнику не нужны.
+Скопируйте выбранную строку целиком, вставьте в SSH-сессию и нажмите Enter.
+Не закрывайте терминал. Скачивание и первый запуск контейнеров могут занять
+несколько минут.
 
-Автономный installer:
-
-1. проверяет SHA-256 встроенного release из exact Git commit;
-2. устанавливает комплект в `/opt/n8n-entrepreneur-starter-kit`;
-3. проверяет Ubuntu 24.04 и x86_64;
-4. определяет публичный IPv4 двумя HTTPS-проверками;
-5. создаёт бесплатный адрес вида `n8n-203-0-113-10.sslip.io` и проверяет его DNS;
-6. устанавливает pinned Docker, PostgreSQL, n8n и Caddy;
-7. создаёт постоянные secrets в `.env` mode `0600`, не печатая их;
-8. ждёт healthy services и показывает готовый HTTPS URL.
-
-Повторный запуск той же команды использует существующий `.env` и Docker volumes. Он не меняет encryption key, пароль PostgreSQL и данные.
-
-## 3. Откройте напечатанный URL
-
-Успешный финал выглядит так:
+**Ожидаемый результат:** installer показывает последовательность `[PASS]`, а
+в конце печатает:
 
 ```text
 Установка завершена.
-  URL: https://n8n-203-0-113-10.sslip.io/
+  URL: https://n8n-<ваш-IP-с-дефисами>.sslip.io/
 ```
 
-Откройте именно адрес из вывода и создайте owner самостоятельно. Пароль должен быть уникальным и храниться в менеджере паролей; преподавателю или агенту он не нужен.
+Если предыдущая попытка на Timeweb закончилась `429 Too Many Requests`,
+повторите именно Timeweb-команду выше. Существующий `.env`, encryption key,
+пароль PostgreSQL и Docker volumes сохраняются.
 
-## Как это работает без вашего домена
+## Шаг 5. Откройте n8n
 
-[sslip.io](https://sslip.io/) возвращает IP, записанный в hostname. Например, `n8n-203-0-113-10.sslip.io` разрешается в `203.0.113.10`. Caddy получает обычный публичный TLS-сертификат через HTTP-01. Installer продолжает только когда DNS-ответ совпадает с обнаруженным публичным IPv4.
+1. Скопируйте URL из строки `Установка завершена`.
+2. Откройте его в браузере.
+3. Создайте первого owner.
+4. Сохраните уникальный пароль в менеджере паролей. Не отправляйте пароль
+   преподавателю, агенту или в чат.
 
-Это внешняя бесплатная зависимость. Если sslip.io недоступен или IP определяется неоднозначно, установка останавливается с `FAIL`; она не включает plain HTTP и не отключает проверку TLS. В таком случае можно позже использовать [собственный домен](domain-and-dns.md) как advanced fallback.
+**Готово, когда:** браузер показывает редактор n8n по HTTPS, без предупреждения
+о сертификате.
 
-## Проверка и обслуживание
+## Шаг 6. Проверьте состояние
 
-После установки команды доступны в постоянном каталоге:
+В SSH-сессии выполните:
 
 ```bash
 cd /opt/n8n-entrepreneur-starter-kit
@@ -72,15 +171,32 @@ sudo ./scripts/doctor.sh
 sudo docker compose ps
 ```
 
-Ожидается `FAIL=0`, а `postgres`, `n8n` и `caddy` имеют состояние `running/healthy`. Не публикуйте `.env`, не меняйте `N8N_ENCRYPTION_KEY` и не запускайте `docker compose down --volumes`.
+Ожидается `FAIL=0`; `postgres`, `n8n` и `caddy` имеют состояние
+`running/healthy`.
 
-## Когда остановиться
+## Если что-то пошло не так
 
-- checksum встроенного release не совпал;
-- ОС не `ubuntu 24.04` или architecture не `x86_64`;
-- два сервиса определения public IPv4 вернули разные значения;
-- бесплатный hostname не разрешается в public IPv4 VPS;
-- TCP 80/443 заняты неизвестным процессом;
-- installer или [doctor](diagnostics.md) показывает `FAIL`.
+| Сообщение | Действие |
+|---|---|
+| `Permission denied (publickey)` | вернитесь к шагу 2 и проверьте, что на VPS добавлен `.pub` именно созданного ключа |
+| `429 Too Many Requests` на Timeweb | повторите Timeweb-команду из шага 4; exact tags сохраняются |
+| checksum release не совпал | остановитесь: не обходите проверку |
+| ОС не Ubuntu 24.04 или architecture не x86_64 | пересоздайте VPS с поддерживаемым образом |
+| hostname не разрешается в IP VPS | остановитесь и используйте [диагностику](troubleshooting.md) |
+| порты 80/443 заняты | не завершайте процессы вслепую; используйте [диагностику](troubleshooting.md) |
+| installer или doctor показывает `[FAIL]` | остановитесь на первой ошибке и откройте [troubleshooting](troubleshooting.md) |
 
-Публичное скачивание, checksum и безопасный verify-only проверяются при публикации release. Полный fresh-VPS и новый novice trial остаются отдельными external gates: не считайте их пройденными только по успешному скачиванию installer.
+Не публикуйте `.env`, не меняйте `N8N_ENCRYPTION_KEY` и не запускайте
+`docker compose down --volumes`.
+
+## Что делает installer
+
+Installer проверяет SHA-256 exact release, Ubuntu и architecture; определяет
+публичный IPv4; создаёт бесплатный hostname через sslip.io; устанавливает
+pinned Docker, PostgreSQL, n8n и Caddy; создаёт постоянные secrets в `.env`
+mode `0600`; выполняет не более трёх попыток pull и ждёт healthy services.
+
+[sslip.io](https://sslip.io/) возвращает IP, записанный в hostname, поэтому
+собственный домен для первого запуска не нужен. Если эта внешняя зависимость
+недоступна, installer останавливается и не включает небезопасный HTTP. Позже
+можно перейти на [собственный домен](domain-and-dns.md).

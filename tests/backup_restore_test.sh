@@ -14,6 +14,10 @@ ok "bash syntax"
 [[ "$($BACKUP --help)" == *"mode 0600"* ]] || fail "backup help"
 [[ "$($RESTORE --help)" == *"safety backup"* ]] || fail "restore help"
 ok "Russian safety help"
+grep -q 'dockerhub.timeweb.cloud/n8nio/n8n' "$BACKUP" || fail "backup Timeweb source allowlist missing"
+grep -q 'dockerhub.timeweb.cloud/n8nio/n8n' "$RESTORE" || fail "restore Timeweb source allowlist missing"
+grep -q 'RESTORE_HELPER_IMAGE' "$RESTORE" || fail "restore helper does not follow archive source"
+ok "backup and restore preserve the approved image source"
 
 tmp="$(mktemp -d)"; trap 'rm -rf -- "$tmp"' EXIT
 archive="$tmp/sample.tar.gz"

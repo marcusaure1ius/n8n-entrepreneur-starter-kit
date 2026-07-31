@@ -23,7 +23,42 @@
 
 Цена может измениться. Проверьте блок «Итого» перед заказом. Платные backups и дополнительные защиты для учебного стенда не обязательны.
 
-## 1. Создайте сервер
+## 1. Создайте SSH-ключ
+
+Если у вас ещё нет отдельного ключа для этого VPS, выберите блок для своей
+локальной ОС.
+
+Для macOS или Linux откройте Terminal:
+
+```bash
+export VPS_KEY="$HOME/.ssh/id_ed25519_n8n"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+test -f "$VPS_KEY" || ssh-keygen -t ed25519 -a 64 -f "$VPS_KEY"
+cat "$VPS_KEY.pub"
+```
+
+Для Windows 10/11 откройте PowerShell:
+
+```powershell
+Get-Command ssh, ssh-keygen -ErrorAction Stop | Out-Null
+$VpsKey = Join-Path $HOME ".ssh\id_ed25519_n8n"
+New-Item -ItemType Directory -Force (Split-Path $VpsKey) | Out-Null
+if (-not (Test-Path $VpsKey)) {
+    ssh-keygen -t ed25519 -a 64 -f $VpsKey
+}
+Get-Content "$VpsKey.pub"
+```
+
+Если OpenSSH Client не найден, установите его через Windows «Дополнительные
+компоненты» по [инструкции Microsoft](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse).
+
+Команда `ssh-keygen` попросит passphrase: придумайте её самостоятельно и
+сохраните в менеджере паролей. Скопируйте целиком одну напечатанную строку,
+которая начинается с `ssh-ed25519`. Это public key для панели Timeweb.
+Приватный файл `id_ed25519_n8n` остаётся только на вашем компьютере.
+
+## 2. Создайте сервер
 
 В «Облачные серверы» нажмите «Создать сервер» и выберите:
 
@@ -40,22 +75,38 @@
 
 Нажатие «Заказать» запускает тарификацию. Дождитесь статуса «В сети» и скопируйте IPv4 из карточки сервера.
 
-## 2. Войдите на VPS
+## 3. Войдите на VPS
 
-Если вы добавили SSH key:
+В поле «Авторизация» должен быть добавлен public key из шага 1. Если сервер
+уже был создан без него, откройте карточку VPS → «Доступ» → «Изменить» и
+добавьте ключ. Timeweb применяет его без перезагрузки в течение пары минут.
+
+Скопируйте IPv4 из карточки сервера. Для macOS или Linux выполните:
 
 ```bash
-ssh -i "$HOME/.ssh/n8n_timeweb" root@203.0.113.10
+export VPS_KEY="$HOME/.ssh/id_ed25519_n8n"
+printf 'IPv4 вашего VPS: '
+read -r VPS_IP
+ssh -i "$VPS_KEY" "root@$VPS_IP"
 ```
 
-Замените пример на свой IPv4. Приватный ключ остаётся на вашем компьютере; в Timeweb загружается только файл `.pub`. Альтернатива для первого входа — web-console в панели провайдера.
+Для Windows PowerShell:
 
-## 3. Вставьте одну команду
+```powershell
+$VpsIp = Read-Host "IPv4 вашего VPS"
+ssh -i $VpsKey "root@$VpsIp"
+```
 
-Команда имеет ровно такой вид:
+Приватный ключ остаётся на вашем компьютере; в Timeweb загружается только
+файл `.pub`. Альтернатива для первого входа — web-console в панели провайдера.
+
+## 4. Вставьте одну команду
+
+Для Timeweb команда имеет ровно такой вид. Переменная перед `sh` выбирает
+официальный proxy Timeweb с теми же exact image tags:
 
 ```bash
-curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | sh
+curl -fsSL "https://github.com/marcusaure1ius/n8n-entrepreneur-starter-kit/releases/latest/download/install.sh" | N8N_IMAGE_SOURCE=timeweb sh
 ```
 
 URL принадлежит публичному GitHub-репозиторию starter kit и ведёт на asset последнего release. Не заменяйте его адресом преподавательского n8n, IP VPS или временной ссылкой.
@@ -71,7 +122,7 @@ URL принадлежит публичному GitHub-репозиторию st
 
 Installer сам получает публичный IPv4 и формирует адрес вида `n8n-203-0-113-10.sslip.io`. Затем он проверяет, что адрес действительно возвращает IPv4 этого VPS, устанавливает pinned stack и печатает итоговый URL.
 
-## 4. Создайте владельца n8n
+## 5. Создайте владельца n8n
 
 Откройте URL из строки `Установка завершена`. Должна появиться форма первого owner:
 
@@ -87,7 +138,7 @@ Installer сам получает публичный IPv4 и формирует 
 | Не удалось определить public IPv4 | проверить исходящий HTTPS; не подставлять случайный адрес |
 | sslip.io вернул другой IP | повторить позже или перейти к [собственному домену](domain-and-dns.md) |
 | Порты 80/443 заняты | найти процесс через `sudo ss -ltnp`; не завершать его вслепую |
-| Docker Hub вернул `429` | использовать recovery из [troubleshooting](troubleshooting.md), сохраняя exact image pins |
+| Docker Hub вернул `429` | повторить Timeweb-команду выше; она сохраняет `.env`, volumes и exact tags, но использует официальный proxy Timeweb |
 | `doctor.sh` показывает `FAIL` | открыть [диагностику](diagnostics.md) и не считать установку успешной |
 
 ## Как остановить расходы
@@ -96,4 +147,4 @@ Installer сам получает публичный IPv4 и формирует 
 
 ## Граница фактической проверки
 
-На реальном Timeweb VPS подтверждены Ubuntu 24.04 x86_64, pinned stack, healthy PostgreSQL/n8n/Caddy, внешний HTTPS, закрытый TCP 5432 и форма owner setup. Для опубликованного автономного bootstrap отдельно подтверждаются public download, checksum и verify-only. Новый end-to-end domainless запуск этой exact команды на чистом VPS и novice trial пока не выполнялись и не заявляются успешными.
+На реальном Timeweb VPS подтверждены Ubuntu 24.04 x86_64, pinned stack, healthy PostgreSQL/n8n/Caddy, внешний HTTPS, закрытый TCP 5432 и форма owner setup. Для опубликованного автономного bootstrap отдельно подтверждаются public download, checksum и verify-only. Novice trial 2026-07-31 подтвердил, что generic Docker Hub path может получить `429`; обновлённая Timeweb proxy-команда требует отдельного полного rerun до заявления об успешном end-to-end.

@@ -4,6 +4,7 @@
 - Target: one Ubuntu 24.04 LTS x86_64 VPS
 - Canonical architecture: [docs/architecture.md](architecture.md)
 - Version evidence: [ADR-0003](../adr/0003-version-pinning-policy.md)
+- Registry fallback: [ADR-0012](../adr/0012-timeweb-dockerhub-proxy-fallback.md)
 
 ## Files
 
@@ -29,6 +30,12 @@ Copy `.env.example` to `.env` and set:
 The encryption key must never change during update. Losing it makes stored n8n credentials unreadable. `.env` must have mode `0600`, remain outside Git and be included in protected backup material.
 
 `EXECUTIONS_DATA_MAX_AGE=168` and `EXECUTIONS_DATA_PRUNE_MAX_COUNT=10000` are privacy-minded training defaults. Reduce them for sensitive/high-volume workflows after understanding the diagnostic tradeoff.
+
+`N8N_IMAGE_SOURCE=official` сохраняет канонические registry references.
+Timeweb onboarding явно выбирает `timeweb`; installer записывает allowlisted
+`POSTGRES_IMAGE`, `N8N_IMAGE_REPOSITORY` и `CADDY_IMAGE` с теми же exact tags через
+официальный proxy провайдера. Произвольные registry overrides не входят в
+beginner contract.
 
 The Compose environment always keeps `EXECUTIONS_DATA_PRUNE=true`. Overrides change the age/count bounds, not the fact that pruning is enabled. See [security baseline](security.md) for examples and the evidence boundary.
 
@@ -72,7 +79,7 @@ docker compose --env-file tests/fixtures/compose.env config --quiet
 docker compose --env-file tests/fixtures/compose.env config --images
 ```
 
-The rendered config must contain only the three exact images from ADR-0003. It must not contain `latest`, PostgreSQL host ports, `privileged`, or Docker socket mounts.
+The rendered config must contain only one of the two approved exact image sets from ADR-0003 and ADR-0012: official registries or the Timeweb proxy with unchanged tags. It must not contain `latest`, PostgreSQL host ports, `privileged`, or Docker socket mounts.
 
 Run the complete automated security assertions with `./tests/security_test.sh`.
 

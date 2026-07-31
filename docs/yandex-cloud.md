@@ -8,10 +8,27 @@ VM Compute Cloud с Ubuntu 24.04 LTS x86_64, статическим публич
 
 ## 1. Создайте SSH key
 
+Для macOS или Linux откройте Terminal:
+
 ```bash
 test -f "$HOME/.ssh/id_ed25519_n8n" || \
   ssh-keygen -t ed25519 -a 64 -f "$HOME/.ssh/id_ed25519_n8n"
 ```
+
+Для Windows 10/11 откройте PowerShell:
+
+```powershell
+Get-Command ssh, ssh-keygen -ErrorAction Stop | Out-Null
+$VpsKey = Join-Path $HOME ".ssh\id_ed25519_n8n"
+New-Item -ItemType Directory -Force (Split-Path $VpsKey) | Out-Null
+if (-not (Test-Path $VpsKey)) {
+    ssh-keygen -t ed25519 -a 64 -f $VpsKey
+}
+Get-Content "$VpsKey.pub"
+```
+
+Если OpenSSH Client не найден, установите его через Windows «Дополнительные
+компоненты» по [инструкции Microsoft](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse).
 
 Приватный key не загружается в cloud и не отправляется другим людям. Официальная последовательность key → VM → connection описана в [Yandex Cloud SSH guide](https://yandex.cloud/en/docs/compute/operations/vm-connect/ssh).
 
@@ -50,10 +67,27 @@ test -f "$HOME/.ssh/id_ed25519_n8n" || \
 
 ## 4. Проверьте VM по IP
 
+Для macOS или Linux:
+
 ```bash
 export VPS_USER="yc-user"
-export VPS_IP="203.0.113.10"
+printf 'Пользователь VPS [yc-user]: '
+read -r VPS_USER_INPUT
+test -z "$VPS_USER_INPUT" || VPS_USER="$VPS_USER_INPUT"
+printf 'IPv4 вашего VPS: '
+read -r VPS_IP
 ssh -i "$HOME/.ssh/id_ed25519_n8n" "$VPS_USER@$VPS_IP"
+```
+
+Для Windows PowerShell:
+
+```powershell
+$VpsUser = Read-Host "Пользователь VPS [yc-user]"
+if ([string]::IsNullOrWhiteSpace($VpsUser)) {
+    $VpsUser = "yc-user"
+}
+$VpsIp = Read-Host "IPv4 вашего VPS"
+ssh -i $VpsKey "$VpsUser@$VpsIp"
 ```
 
 `VPS_USER` должен совпадать с username, заданным при создании VM; `yc-user` — только типичный default для CLI path, а не универсальное предположение.

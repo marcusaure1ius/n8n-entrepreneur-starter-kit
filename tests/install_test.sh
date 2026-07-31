@@ -73,6 +73,22 @@ set -e
 assert_contains "$version_output" "закреплённой версией 2.29.10"
 ok "runtime env принимает только exact n8n pin"
 
+set_image_source timeweb
+[[ "$POSTGRES_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/postgres:17.10-bookworm" ]] \
+  || fail "Timeweb PostgreSQL proxy reference неверен"
+[[ "$N8N_IMAGE_REPOSITORY_VALUE" == "dockerhub.timeweb.cloud/n8nio/n8n" ]] \
+  || fail "Timeweb n8n proxy reference неверен"
+[[ "$CADDY_IMAGE_VALUE" == "dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine" ]] \
+  || fail "Timeweb Caddy proxy reference неверен"
+set_image_source official
+set +e
+invalid_source_output="$(set_image_source unknown 2>&1)"
+invalid_source_code=$?
+set -e
+[[ "$invalid_source_code" == "$EXIT_USAGE" ]] || fail "неизвестный image source принят"
+assert_contains "$invalid_source_output" "official или timeweb"
+ok "image source ограничен official и Timeweb proxy с exact tags"
+
 ENV_FILE="$temporary_root/runtime.env"
 N8N_HOST_VALUE="n8n.example.com"
 ACME_EMAIL_VALUE="admin@example.com"
@@ -135,6 +151,23 @@ DOCKER_CMD=(fake_docker)
 assert_running_services
 DOCKER_CMD=("${original_docker_cmd[@]}")
 ok "проверка running services принимает полный список без SIGPIPE"
+
+PULL_ATTEMPTS=0
+fake_retry_docker() {
+  if [[ "${*: -1}" == "pull" ]]; then
+    PULL_ATTEMPTS=$((PULL_ATTEMPTS + 1))
+    (( PULL_ATTEMPTS >= 3 ))
+    return
+  fi
+  return 0
+}
+DOCKER_CMD=(fake_retry_docker)
+PULL_RETRY_DELAYS=(0 0)
+pull_pinned_images >/dev/null 2>&1 || fail "bounded pull retry не восстановился"
+[[ "$PULL_ATTEMPTS" == 3 ]] || fail "ожидалось три pull attempts, получено $PULL_ATTEMPTS"
+DOCKER_CMD=("${original_docker_cmd[@]}")
+PULL_RETRY_DELAYS=(5 15)
+ok "pinned image pull использует максимум три попытки"
 
 NON_INTERACTIVE=1
 N8N_HOST_VALUE=""

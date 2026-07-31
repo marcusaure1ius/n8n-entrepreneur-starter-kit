@@ -38,7 +38,7 @@ Exact baseline:
 | Docker Engine для Ubuntu 24.04 amd64 | `5:29.6.1-1~ubuntu.24.04~noble` |
 | Docker Compose plugin для Ubuntu 24.04 amd64 | `5.3.1-1~ubuntu.24.04~noble` |
 
-Container digests записываются в release evidence после pull, но Compose использует exact application tags. Политика и источники зафиксированы в [ADR-0003](../adr/0003-version-pinning-policy.md).
+Container digests записываются в release evidence после pull, но Compose использует exact application tags. Default registry остаётся official; Timeweb onboarding может явно выбрать allowlisted provider proxy без изменения tags. Политика версий зафиксирована в [ADR-0003](../adr/0003-version-pinning-policy.md), а bounded pull retry и proxy boundary — в [ADR-0012](../adr/0012-timeweb-dockerhub-proxy-fallback.md).
 
 ## Runtime configuration contract
 
@@ -79,7 +79,7 @@ Caddy выбран для базового профиля из-за неболь
 6. запустить сервисы и выполнить те же существенные проверки, что `doctor.sh`;
 7. показать URL, пути и команды безопасной эксплуатации.
 
-Повторный запуск должен быть разумно идемпотентным. `--dry-run` не меняет систему. Изменение firewall выполняется только после отдельного подтверждения и не должно обрывать текущий SSH-доступ.
+Image pull использует максимум три bounded attempts. Default source — official registries; только явный `N8N_IMAGE_SOURCE=timeweb` выбирает allowlisted Timeweb proxy с теми же exact tags и сохраняет выбор для последующих Compose-команд. Повторный запуск должен быть разумно идемпотентным. `--dry-run` не меняет систему. Изменение firewall выполняется только после отдельного подтверждения и не должно обрывать текущий SSH-доступ.
 
 Реализация и таблица deterministic preflight/exit codes: [`scripts/install.sh`](../scripts/install.sh), [`scripts/build-one-command-installer.sh`](../scripts/build-one-command-installer.sh) и [installation reference](installation.md). Публичный URL является release gate: до выбора лицензии и размещения собранного артефакта по стабильному HTTPS-адресу документация показывает синтаксис, но не выдумывает работающий endpoint.
 

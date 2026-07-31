@@ -23,6 +23,19 @@ EOF
 diff -u "$tmp/expected-images" "$tmp/actual-images" >/dev/null || fail "Compose image pins differ from approved set"
 ok "Compose uses exactly three approved image pins"
 
+POSTGRES_IMAGE='dockerhub.timeweb.cloud/library/postgres:17.10-bookworm' \
+N8N_IMAGE_REPOSITORY='dockerhub.timeweb.cloud/n8nio/n8n' \
+CADDY_IMAGE='dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine' \
+  docker compose --project-directory "$ROOT" --env-file "$ENV_FILE" config --images | sort > "$tmp/timeweb-images"
+cat > "$tmp/expected-timeweb-images" <<'EOF'
+dockerhub.timeweb.cloud/library/caddy:2.11.4-alpine
+dockerhub.timeweb.cloud/library/postgres:17.10-bookworm
+dockerhub.timeweb.cloud/n8nio/n8n:2.29.10
+EOF
+diff -u "$tmp/expected-timeweb-images" "$tmp/timeweb-images" >/dev/null \
+  || fail "Timeweb proxy image pins differ from approved set"
+ok "Compose accepts the Timeweb proxy with unchanged exact tags"
+
 docker compose --project-directory "$ROOT" --env-file "$ENV_FILE" config --format json > "$tmp/compose.json"
 jq -e '
   .services.postgres.platform == "linux/amd64" and
