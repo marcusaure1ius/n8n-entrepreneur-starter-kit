@@ -1,5 +1,20 @@
 # n8n Entrepreneur Starter Kit
 
+> **Репозиторий переехал.** Разработка продолжается в
+> <https://github.com/marcusaure1ius/alfa-ai-course>, где starter kit и Course
+> Control Plane живут вместе. Этот репозиторий переведён в архив и доступен
+> только для чтения.
+>
+> Актуальная установка одной командой:
+>
+> ```bash
+> curl -fsSL "https://github.com/marcusaure1ius/alfa-ai-course/releases/latest/download/install.sh" | sh
+> ```
+>
+> Релизы `v0.1.0`–`v0.1.3` здесь остаются доступными: по ним можно откатиться и
+> проверить ранее опубликованные checksum. Новые релизы выходят только в новом
+> репозитории.
+
 Production-minded starter kit для самостоятельного развёртывания официального self-hosted n8n Community Edition предпринимателем без опыта DevOps.
 
 ## Статус проекта
